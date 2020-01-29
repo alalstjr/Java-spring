@@ -7,6 +7,10 @@
 - [1. 스프링 IoC 컨테이너와 빈](#스프링-IoC-컨테이너와-빈)
     - [1. 스프링 IoC 컨테이너](#스프링-IoC-컨테이너)
     - [2. Bean](#Bean)
+- [2. ApplicationContext와 다양한 빈 설정 방법](#ApplicationContext와-다양한-빈-설정-방법)
+    - [1. Bean 설정파일을 XML 코드로 만들기](#Bean-설정파일을-XML-코드로-만들기)
+    - [2. Bean 설정파일을 Java 코드로 만들기](#Bean-설정파일을-Java-코드로-만들기)
+    - [3. Java 코드로만든 Bean 설정파일 자동등록](#Java-코드로만든-Bean-설정파일-자동등록)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -106,3 +110,202 @@ public class BookService {
     }
 }
 ~~~
+
+# ApplicationContext와 다양한 빈 설정 방법
+
+~~~
+public class BookRepository {
+}
+
+public class BookService {
+
+    private BookRepository bookRepository;
+
+    public void setBookRepository(BookRepository bookRepository) {
+        this.bookRepository = bookRepository;
+    }
+}
+~~~
+
+BookRepository 와 BookService를 Bean으로 등록을 하겠습니다.
+
+## Bean 설정파일을 XML 코드로 만들기
+
+고전적인 스프링 Bean 설정
+
+> /resources/application.xml
+
+~~~
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean
+            id="bookService"
+            class="me.whiteship.BookService"
+            scope="singleton"
+    >
+        <property name="bookRepository" ref="bookRepository"></property>
+    </bean>
+    <bean
+            id="bookRepository"
+            class="me.whiteship.BookRepository"
+    ></bean>
+
+    class : Bean의 타입
+    scop  : singleton 만 싱글톤 나머지는 프로토타입
+            prototype 매번 새로운 객체를 만듭니다.
+            request 마다 새로운 객체를 만듭니다.
+            session http 마다 객체를 만듭니다.
+</beans>
+~~~
+
+bookService Bean위치에 bookRepository `property 를 추가하므로서 생성자로 주입`을 받을 수 있습니다.
+
+property name="bookRepository" 에서 `name` 은 bookRepository의 `setter에서 참조`한것입니다.
+`ref` 는 다른 Bean을 참조한다는 의미로 사용됩니다.
+
+Bean 생산이 완료되었다면 ApplicationContext를 만들어서 사용하면 됍니다.
+
+~~~
+public class Application {
+    public static void main(String[] args) {
+        ApplicationContext appC                = new ClassPathXmlApplicationContext("application.xml");
+
+        // 등록된 bean의 정보 목록
+        String[]           beanDefinitionNames = appC.getBeanDefinitionNames();
+        System.out.println("beanDefinitionNames : " + Arrays.toString(beanDefinitionNames));
+
+        // 등록된 Bean을 선택하여 가져올 수 있습니다.
+        // bookService 클래스에 bookRepository 생성자가 주입이 되었는지 확인합니다.
+        // 값이 존재하므로 me.whiteship.BookRepository@273e7444 출력합니다.
+        // 만약 property 주석처리되어 실행하면 Null 을 출력하게 됩니다.
+        BookService bookService = (BookService) appC.getBean("bookService");
+        System.out.println("getBean : " + bookService.bookRepository);
+    }
+}
+~~~
+
+xml로 설정하여 Bean 의존성 관리의 단점은 직접 Bean을 서로 연관되어 작성하는게 번거롭다는 것입니다.
+
+그래서 등장한것이 Spring 2.5v 추가된 context:component-scan 입니다.
+
+~~~
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <context:component-scan base-package="me.whiteship"/>
+
+</beans>
+~~~
+
+base-package 설정된 경로부터 Bean으로 등록된 클래스를 탐색하여 Bean을 등록을 합니다.
+
+@Component를 확장하는 에노테이션 @Service, @Repository 등등 을 탐색하여 등록합니다.
+
+~~~
+@Service
+public class BookService {  
+    @Autowired
+    public BookRepository bookRepository;
+
+    ...
+}
+
+@Repository
+public class BookRepository { ... }
+~~~
+
+component-scan으로 Bean으로는 등록이 되지만 의존성 주입은 아직 안됍니다.
+Bean으로 등록된 클래스를 의존성 주입을 받으려면 대표적으로 @Autowired 에노테이션을 사용합니다.
+
+## Bean 설정파일을 Java 코드로 만들기
+
+~~~
+// Bean 설정파일이라는 것을 알려주는 에노테이션
+@Configuration
+public class ApplcationConfig {
+
+    /*
+     * Bean:메소드 name  : bookRepository
+     * Bean:메소드의 type : BookRepository
+     * Bean:메소드의 class: new BookRepository()
+     * */
+
+    @Bean
+    BookRepository bookRepository() {
+        return new BookRepository();
+    }
+
+    @Bean
+    BookService bookService() {
+        BookService bookService = new BookService();
+        bookService.setBookRepository(bookRepository()); // 메소드를 호출해서 의존성 주입을 직접 해줄 수 있습니다.
+        return bookService;
+    }
+
+    @Bean
+    BookService bookService(BookRepository bookRepository) {
+        BookService bookService = new BookService();
+        bookService.setBookRepository(bookRepository);  // 메소드 파라미터로 주입을 받아서 의존성을 주입받을 수 있습니다.
+        return bookService;
+    }
+}
+
+public class BookService {
+    public BookRepository bookRepository;
+
+    public void setBookRepository(BookRepository bookRepository) {
+        this.bookRepository = bookRepository;
+    }
+}
+
+public class BookRepository { ... }
+
+public class Application {
+    public static void main(String[] args) {
+        ApplicationContext appC = new AnnotationConfigApplicationContext(ApplcationConfig.class);
+        ...
+    }
+}
+
+결과 -
+
+beanDefinitionNames : [org.springframework.context.annotation.internalConfigurationAnnotationProcessor, org.springframework.context.annotation.internalAutowiredAnnotationProcessor, org.springframework.context.annotation.internalCommonAnnotationProcessor, org.springframework.context.event.internalEventListenerProcessor, org.springframework.context.event.internalEventListenerFactory, applcationConfig, bookRepository, bookService]
+getBean : me.whiteship.BookRepository@4bdeaabb
+~~~
+
+ApplcationConfig.class 를 Bean 설정으로 사용하도록 ApplicationContext 등록합니다.
+동작은 xml하고 같습니다.
+
+ApplcationConfig에서 의존성을 직접 주입하지않고 사용하려면 @Autowired 를 사용하면 됩니다.
+
+## Java 코드로만든 Bean 설정파일 자동등록
+
+~~~
+@Configuration
+@ComponentScan(basePackageClasses = Application.class)
+public class ApplcationConfig { }
+
+@Service
+public class BookService {
+    @Autowired
+    public BookRepository bookRepository;
+    ...
+}
+
+@Repository
+public class BookRepository { }
+~~~
+
+@ComponentScan(basePackageClasses = Application.class)
+
+Application.class 위치한 곳부터 탐색을 하라는 코드
+즉 모든 클래스에 붙어있는 에노테이션을 찾아서 Bean 등록을 합니다. 
+
+Spring Boot의 경우 이를 통으로 넣은 에노테이션이 `@SpringBootApplication` 입니다. 

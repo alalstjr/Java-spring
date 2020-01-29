@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- 1. bean을 직접 등록하여 의존성을 등록해주는 방법 -->
+    <!--
+        <bean
+                id="bookService"
+                class="me.whiteship.BookService"
+                scope="singleton"
+        >
+            <property name="bookRepository" ref="bookRepository"></property>
+        </bean>
+        <bean
+                id="bookRepository"
+                class="me.whiteship.BookRepository"
+        ></bean>
+    -->
+    <!--
+        class : Bean의 타입
+        scop  : singleton 만 싱글톤 나머지는 프로토타입
+                prototype 매번 새로운 객체를 만듭니다.
+                request 마다 새로운 객체를 만듭니다.
+                session http 마다 객체를 만듭니다.
+   -->
+
+    <!-- 2. context:component-scan 방법 -->
+    <context:component-scan base-package="me.whiteship"/>
+
+</beans>
