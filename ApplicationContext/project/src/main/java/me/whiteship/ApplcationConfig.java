@@ -20,14 +20,12 @@ public class ApplcationConfig {
     BookRepository bookRepository() {
         return new BookRepository();
     }
-
     @Bean
     BookService bookService() {
         BookService bookService = new BookService();
         bookService.setBookRepository(bookRepository()); // 메소드를 호출해서 의존성 주입을 직접 해줄 수 있습니다.
         return bookService;
     }
-
     @Bean
     BookService bookService(BookRepository bookRepository) {
         BookService bookService = new BookService();

@@ -10,7 +10,6 @@ import org.springframework.context.support.ClassPathXmlApplicationContext;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 
-@SpringBootApplication
 public class Application {
     public static void main(String[] args) {
         // XML 주입받아 사용하는 Context
