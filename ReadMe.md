@@ -576,3 +576,71 @@ public class BookServiceRunner implements ApplicationRunner {
     }
 }
 ~~~
+
+# @Component와 컴포넌트 스캔
+
+- 컨포넌트 스캔 주요 기능
+    - 스캔 위치 설정
+    - 필터: 어떤 애노테이션을 스캔 할지 또는 하지 않을지
+- @Component
+    - @Repository
+    - @Service
+    - @Controller
+    - @Configuration
+- 동작 원리
+    - @ComponentScan은 스캔할 패키지와 애노테이션에 대한 정보
+    - 실제 스캐닝은 ConfigurationClassPostProcessor라는 BeanFactoryPostProcessor에
+의해 처리 됨.
+
+ComponentScan.class 로 인해서 컴포넌트가 등록이 됩니다.
+가장 중요한 설정이 basePackages 입니다.
+
+basePackages는 문자열로 package를 저장합니다.
+이는 type-safe하지 않으므로 basePackageClasses 속성으로 type-safe 설정을 해줍니다.
+
+basePackageClasses값에 전달된 해당 클래스 기준으로 ComponentScan을 시작합니다.
+
+## Filter 예외
+
+ComponentScan 동작시 제외시키는 설정
+
+~~~
+@ComponentScan(
+    excludeFilters = { 
+        @Filter(type = FilterType.CUSTOM, classes = TypeExcludeFilter.class),
+		@Filter(type = FilterType.CUSTOM, classes = AutoConfigurationExcludeFilter.class) 
+    }
+)
+~~~
+
+## Spring Boot 구동방법
+
+인스턴스를 만들어서 구동시키는 방법
+
+~~~
+@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+        
+        SpringApplication app = new SpringApplication(Application.class);
+        // 애플리케이션 추가 동작 메소드
+        app.addInitializers((ApplicationContextInitializer<GenericApplicationContext>) act -> {
+            // registerBean 통해서 직접 Bean을 등록할 수 있습니다.
+            act.registerBean(SampleRunner.class);
+            // Supplier 는 등록되는 Bean 타입의 인스턴스를 제공해줘야 합니다.
+            // ApplicationRunner를 만들고 간단하게 메세지를 띄웁니다.
+            act.registerBean(
+                    SampleRunner.class,
+                    (Supplier<ApplicationRunner>) () -> args1 -> System.out.println("Run!!")
+            );
+        });
+        // 이렇게 설정하여 애플리케이션을 구동할 경우 장점은 여러가지 예를들어 (조건문, 포문..)코딩을 사용하여 커스텀 할 수 있습니다.
+        // 왜냐하면 리플렉션이나, 씨지라이브러리 프록시 같은것을 사용안하니 애플리케이션 구동시 속도 성능상에 이점이 있습니다.
+
+        // 애플리케이션 구동
+        app.run(args);
+    }
+}
+~~~
+
+ 
