@@ -18,6 +18,16 @@
         - [3. 해당 타입의 빈 모두 주입 받기](#해당-타입의-빈-모두-주입-받기)
         - [4. 주입받는 Bean 이름을 동일하게 선언](#주입받는-Bean-이름을-동일하게-선언)
         - [5. 동작 원리](#동작-원리)
+- [4. @Component와 컴포넌트 스캔](#@Component와-컴포넌트-스캔)
+    - [1. Filter 예외](#Filter-예외)
+    - [2. Functional Bean 등록](#Functional-Bean-등록)
+    - [3. @ComponentScan 동작 원리](#@ComponentScan-동작-원리)
+        - [1. BeanFactoryPostProcessor](#BeanFactoryPostProcessor)
+- [5. 빈의 스코프](#빈의-스코프)
+    - [1. 싱글톤 스코프](#싱글톤-스코프)
+    - [2. 프로토타입](#프로토타입)
+        - [1. proxyMode](#proxyMode)
+        - [2. 코드로 변경](#코드로-변경)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -587,10 +597,6 @@ public class BookServiceRunner implements ApplicationRunner {
     - @Service
     - @Controller
     - @Configuration
-- 동작 원리
-    - @ComponentScan은 스캔할 패키지와 애노테이션에 대한 정보
-    - 실제 스캐닝은 ConfigurationClassPostProcessor라는 BeanFactoryPostProcessor에
-의해 처리 됨.
 
 ComponentScan.class 로 인해서 컴포넌트가 등록이 됩니다.
 가장 중요한 설정이 basePackages 입니다.
@@ -613,15 +619,13 @@ ComponentScan 동작시 제외시키는 설정
 )
 ~~~
 
-## Spring Boot 구동방법
-
-인스턴스를 만들어서 구동시키는 방법
+## Functional Bean 등록
 
 ~~~
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) {
-        
+
         SpringApplication app = new SpringApplication(Application.class);
         // 애플리케이션 추가 동작 메소드
         app.addInitializers((ApplicationContextInitializer<GenericApplicationContext>) act -> {
@@ -631,7 +635,7 @@ public class Application {
             // ApplicationRunner를 만들고 간단하게 메세지를 띄웁니다.
             act.registerBean(
                     SampleRunner.class,
-                    (Supplier<ApplicationRunner>) () -> args1 -> System.out.println("Run!!")
+                    (Supplier<ApplicationRunner>) () -> args1 -> System.out.println("Functional Bean !!")
             );
         });
         // 이렇게 설정하여 애플리케이션을 구동할 경우 장점은 여러가지 예를들어 (조건문, 포문..)코딩을 사용하여 커스텀 할 수 있습니다.
@@ -643,4 +647,197 @@ public class Application {
 }
 ~~~
 
- 
+리플렉션 https://docs.oracle.com/javase/tutorial/reflect/index.html
+
+프록시 https://docs.oracle.com/javase/8/docs/technotes/guides/reflection/proxy.html
+
+리플렉션은 보통 동적으로 특정 클래스를 로딩하거나, 클래스의 필드나 메소드를 알아내고 값을 읽어오거나 메소드를 실행할 수 있는 기능을 말합니다.
+
+@ComponentScan을 대신하여 Functional Bean 등록하여 사용하기에는 너무 많은 작업시간이 소요되므로 추천하지 않는 방법
+
+## @ComponentScan 동작 원리
+
+- @ComponentScan은 스캔할 패키지와 애노테이션에 대한 정보
+- 실제 스캐닝은 ConfigurationClassPostProcessor라는 BeanFactoryPostProcessor에
+의해 처리 됨.
+
+[ConfigurationClassPostProcessor](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/context/annotation/ConfigurationClassPostProcessor.html)
+[BeanFactoryPostProcessor](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/beans/factory/config/BeanFactoryPostProcessor.html)
+
+
+### BeanFactoryPostProcessor
+
+BeanPostProcessor 와 비슷하지만 실행되는 시점이 다릅니다.
+다른 모든 Bean들을 만들기 이전에 적용을 해줍니다. 
+다른 Bean들은 개발자가 직접 등록하는 모든 Bean들도 포함이 되어있습니다.
+
+# 빈의 스코프
+
+개발자가 등록한 모든 Bean들은 `스코프라는것이 존재`합니다.
+그중에서 `싱글톤 스코프`만 사용했습니다.
+왜냐하면 아무런 설정이 없다면 `초기값으로 싱글톤이 설정`됩니다.
+
+## 싱글톤 스코프
+
+애플리케이션 전반에 걸쳐서 해당 `Bean에 인스턴스가 오직 하나만 존재`하는것
+
+모든 싱글톤 스코프 Bean들은 기본값이 ApplicationContext생성할때 만들게 되어있습니다.
+그러므로 애플리케이션 구동할때 시간이 조금더 소요될 수 있습니다.
+
+간단한 에제
+
+~~~
+@Component
+public class Proto { }
+
+@Component
+public class Single {
+    @Autowired
+    private Proto proto;
+
+    public Proto getProto() {
+        return proto;
+    }
+}
+
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    private Single single;
+
+    @Autowired
+    private Proto proto;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        System.out.println(proto);
+        System.out.println(single.getProto());
+
+        /*
+        * - 싱글톤 -
+        * 첫번째 출력하는 proto는 AppRunner가 받아온 Proto입니다.
+        * 두번째 출력하는 proto는 Single이 참조한 Proto
+        * 둘의 Proto는 같은 인스턴스를 사용합니다.
+        * 해당 Bean의 인스턴스 하나만 사용합니다.
+        * */
+    }
+}
+~~~
+
+경우에 따라서는 프로토타입 Request, Session, WebSocket... 여러가지를 사용할 수 도 있습니다.
+
+## 프로토타입
+
+매번 새로운 객체 인스턴스를 만들어 사용하는것 
+
+간단한 예제
+
+~~~
+@Component
+@Scope("prototype")
+public class Proto { }
+
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    ApplicationContext act;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        /*
+        * - 프로토타입 -
+        * */
+        System.out.println("ProtoType");
+        System.out.println(act.getBean(Proto.class));
+        System.out.println(act.getBean(Proto.class));
+        System.out.println(act.getBean(Proto.class));
+
+        System.out.println("SingleType");
+        System.out.println(act.getBean(Single.class));
+        System.out.println(act.getBean(Single.class));
+        System.out.println(act.getBean(Single.class));
+    }
+}
+
+결과 - 
+
+ProtoType
+me.whiteship.Proto@1e469dfd
+me.whiteship.Proto@554f0dfb
+me.whiteship.Proto@1f7076bc
+SingleType
+me.whiteship.Single@71904469
+me.whiteship.Single@71904469
+me.whiteship.Single@71904469
+~~~
+
+@Scope("prototype") 선언으로 Proto Bean을 받아올때마다 새로운 인스턴스가 생성됩니다.
+
+### proxyMode
+
+프로토타입 Bean이 싱글톤 Bean을 참조해서 사용하면 문제가 발생하지 않습니다.
+
+하지만 싱글톤 Bean이 프로토타입 Bean을 사용할경우 
+싱글톤 Bean은 인스턴스가 한번만 생성됩니다.
+참조하고있는 프로토타입 Bean은 이미 셋팅이 되어 있습니다. 그렇기 때문에
+실글톤 Bean을 계속해서 사용할 경우 프로토타입 Bean은 변경되지 않는 문제가 발생합니다.
+
+~~~
+...
+System.out.println("ProtoType By SingleType");
+System.out.println(act.getBean(Single.class).getProto());
+System.out.println(act.getBean(Single.class).getProto());
+System.out.println(act.getBean(Single.class).getProto());
+...
+
+결과 - 
+
+ProtoType By SingleType
+me.whiteship.Proto@5bbbdd4b
+me.whiteship.Proto@5bbbdd4b
+me.whiteship.Proto@5bbbdd4b
+~~~
+
+이 문제를 해결하려면 proxyMode를 사용하는겁니다.
+
+~~~
+@Component
+@Scope(value = "prototype", proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class Proto { }
+~~~
+
+Proto를 프록시 기반의 클래스로 감싸도록 설정합니다.
+왜 프로시로 감싸도록 한것인가?
+
+Single 스코프가 Prototype 스코프의 Bean을 직접참조하면 안 되기 때문입니다.
+프록시를 거쳐서 참조하도록 해야합니다.
+직접 쓰면 바꿔줄 상황이 되도록 프록시를 감싸주는것입니다.
+
+ScopedProxyMode.TARGET_CLASS -> 클래스 기반의 프록시를 만들어서 씨지라이브러리 기반의 클래스를 상속받은 프록시를 만들도록 알려줍니다.
+
+### 코드로 변경
+
+~~~
+@Component
+@Scope(value = "prototype")
+public class Proto { }
+
+@Component
+public class Single {
+    @Autowired
+    private ObjectProvider<Proto> proto;
+
+    public Proto getProto() {
+        return proto.getIfAvailable();
+    }
+}
+
+결과 - 
+
+ProtoType By SingleType
+me.whiteship.Proto@d71adc2
+me.whiteship.Proto@1a1d3c1a
+me.whiteship.Proto@24528a25
+~~~
