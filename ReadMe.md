@@ -31,6 +31,8 @@
 - [6. Environment 1부 프로파일](#Environment-1부-프로파일)
     - [1. 프로파일이란?](#프로파일이란?)
     - [2. @Profile](#@Profile)
+- [7. MessageSource](#MessageSource)
+    - [1. 릴로딩 기능이 있는 메시지 소스 사용하기](#릴로딩-기능이-있는-메시지-소스-사용하기)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -911,3 +913,127 @@ public class TestConfiguration {
     - Vm option -> -Dspring.profiles.avtive=”test,A,B,...”
     - @ActiveProfiles (테스트용)
     
+# Environment 2부 프로퍼티
+
+계층형 구조 hierarchical 입니다. 
+동일한 설정이 여러 곳에 있어도 계층형 구조라서 우선 순위가 높은게 사용 된다는 설명입니다.
+
+~~~
+VM Option -> -Dapp.name=spring5
+
+Environment environment = act.getEnvironment();
+System.out.println(environment.getProperty("app.name"));
+~~~
+
+## properties
+
+~~~
+app.name=properties
+
+@SpringBootApplication
+@PropertySource("classpath:/app.properties")
+public class Application { ... }
+
+or - 
+
+@Value("{app.name}")
+String appName;
+~~~
+
+# MessageSource
+
+ApplicationContext 내부에 MessageSource를 상속받고 있으므로
+직접 MessageSource를 주입받아 사용할 수 있습니다.
+
+~~~
+messages_en.properties {
+    hello=hello, {0}
+}
+
+messages.properties {
+    hello=안녕, {0}
+}
+~~~
+
+별다른 설정을 하지 않아도 SpringBootApplication은 `messages` 로 시작하는 프로퍼티스들을  메세지 소스로 읽어줍니다.
+
+~~~
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    MessageSource messageSource;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        String hello = messageSource.getMessage(
+                "hello",
+                new String[]{ "jjunpro" },
+                Locale.KOREA
+        );
+        System.out.println(hello);
+
+        String helloDefault = messageSource.getMessage(
+                "hello",
+                new String[]{ "jjunpro" },
+                Locale.getDefault()
+        );
+        System.out.println(helloDefault);
+    }
+}
+~~~
+
+만약 둘다 출력이 동일하게 출력된다면? 
+
+안녕, jjunpro<br/>
+안녕, jjunpro
+
+default 로케일이 한국이라서 한글 메시지가 찍히는겁니다. 
+만약 개발 환경 default가 영문이면 영문 프로퍼티가 출력됩니다. 
+
+## 릴로딩 기능이 있는 메시지 소스 사용하기
+
+~~~
+...
+@Autowired
+MessageSource messageSource;
+
+@Override
+public void run(ApplicationArguments args) throws Exception {
+    String hello = messageSource.getMessage(
+            "hello",
+            new String[]{ "jjunpro" },
+            Locale.ENGLISH
+    );
+    String helloDefault = messageSource.getMessage(
+            "hello",
+            new String[]{ "jjunpro" },
+            Locale.getDefault()
+    );
+
+    // 1초마다 출력을 합니다.
+    while (true) {
+        System.out.println(hello);
+        System.out.println(helloDefault);
+        Thread.sleep(2000l);
+    }
+}
+...
+
+@SpringBootApplication
+public class Application {
+    ...
+    @Bean
+    public MessageSource messageSource() {
+        ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
+        messageSource.setBasename("classpath:/messages");
+        messageSource.setDefaultEncoding("UTF-8");
+
+        // 3초 캐싱 후 다시 읽도록합니다.
+        messageSource.setCacheSeconds(3000);
+        return messageSource;
+    }
+}
+~~~
+
+메세지 프로퍼티를 수정 후 다시 빌드하면 실시간으로 변경된 소스가 출력됩니다.
