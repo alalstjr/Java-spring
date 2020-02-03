@@ -28,6 +28,9 @@
     - [2. 프로토타입](#프로토타입)
         - [1. proxyMode](#proxyMode)
         - [2. 코드로 변경](#코드로-변경)
+- [6. Environment 1부 프로파일](#Environment-1부-프로파일)
+    - [1. 프로파일이란?](#프로파일이란?)
+    - [2. @Profile](#@Profile)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -841,3 +844,70 @@ me.whiteship.Proto@d71adc2
 me.whiteship.Proto@1a1d3c1a
 me.whiteship.Proto@24528a25
 ~~~
+
+# Environment 1부 프로파일
+
+~~~
+public interface ApplicationContext extends EnvironmentCapable, ListableBeanFactory, HierarchicalBeanFactory,
+		MessageSource, ApplicationEventPublisher, ResourcePatternResolver {
+            ...
+        }
+~~~
+
+ApplicationContext 인터페이스는 수많은 인터페이스를 상속받고 있습니다.
+그 중에서 Environment 프로파일을 살펴보겠습니다.
+
+## 프로파일이란?
+
+환경설정에서 Bean들의 묶음입니다.
+각각에 환경에 따라서 다른 Bean들을 사용해야 하는 경우
+또는 특정 환경에서만 어떠한 Bean을 등록해야 하는 경우
+
+~~~
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    ApplicationContext act;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Environment environment = act.getEnvironment();
+        
+        // 현재 액티브중인 프로파일들이 무엇인지 나열하는 메소드
+        System.out.println(Arrays.asList(environment.getActiveProfiles()));
+    }
+}
+
+public interface EnvironmentCapable {
+	Environment getEnvironment();
+}
+~~~
+
+act.getEnvironment() 는 EnvironmentCapable 에서 가져온것입니다.
+ApplicationContext가 EnvironmentCapable를 상속 받았기 때문에 Environment를 가져와서 사용할 수 있습니다.
+
+## @Profile
+
+~~~
+public interface BookRepository { }
+
+public class TestBookRepository implements BookRepository { }
+
+@Configuration
+@Profile("test")
+public class TestConfiguration {
+
+    @Bean
+    BookRepository bookRepository() {
+        return new TestBookRepository();
+    }
+}
+~~~
+
+@Profile("test")인 경우에만 Bean설정이되는 클래스입니다.
+
+- 프로파일 설정하기
+    - Vm option -> -Dspring.profiles.avtive=”test,A,B,...”
+    - @ActiveProfiles (테스트용)
+    
