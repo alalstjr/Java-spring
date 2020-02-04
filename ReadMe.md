@@ -1269,3 +1269,30 @@ public class MyEventHandler {
     }
 }
 ~~~
+
+# ResourceLoader
+
+리소스를 읽어오는 기능을 제공하는 인터페이스
+
+~~~
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    ResourceLoader loader;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Resource resource = loader.getResource("classpath:test.txt");
+        System.out.println(resource.exists());
+        System.out.println(resource.getDescription());
+        System.out.println(Files.readString(Path.of(resource.getURI())));
+    }
+}
+
+결과 - 
+
+true
+class path resource [test.txt]
+hello spring file
+~~~
