@@ -39,6 +39,11 @@
     - [3. 실행 순서를 줘여하는 경우](#실행-순서를-줘여하는-경우)
     - [4. 비동기](#비동기)
     - [5. 스프링이 제공하는 기본 이벤트](#스프링이-제공하는-기본-이벤트)
+- [9. ResourceLoader](#ResourceLoader)
+- [10. Resource 추상화](#Resource-추상화)
+    - [1. Class Type 검증](#Class-Type-검증)
+- [11. Validation(검증) 추상화](#Validation(검증)-추상화)
+    - [1. 스프링 부트 2.0.5 이상 버전을 사용할 때](#스프링-부트-2.0.5-이상-버전을-사용할-때)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -1295,4 +1300,253 @@ public class AppRunner implements ApplicationRunner {
 true
 class path resource [test.txt]
 hello spring file
+~~~
+
+# Resource 추상화
+
+[The ResourceLoader](https://docs.spring.io/spring/docs/4.3.26.RELEASE/spring-framework-reference/htmlsingle/#resources)
+
+org.springframework.core.io.Resource
+
+- 특징
+    - java.net.URL을 추상화 한 것.
+    - 스프링 내부에서 많이 사용하는 인터페이스.
+- 추상화 한 이유
+    - 클래스패스 기준으로 리소스 읽어오는 기능 부재
+    - ServletContext를 기준으로 상대 경로로 읽어오는 기능 부재
+    - 새로운 핸들러를 등록하여 특별한 URL 접미사를 만들어 사용할 수는 있지만 구현이 복잡하고 편의성 메소드가 부족하다.
+
+실제 로우레벨에 있는 리소스에 접근하는 기능을 만든겁니다.
+기존 java.net.URL는 classpath 기준으로 URL을 가져오는 기능은 존재하지않습니다.
+
+ClassPathXmlApplicationContext는 classpath 기준으로 Bean 설정파일을 찾아 등록합니다.
+FileSystemXmlApplicationContext는 FileSystem 경로 기준으로 문자열 파일을 찾아서 Bean 설정파일 등록합니다.
+
+- 구현체
+    - UrlResource: java.net.URL 참고, 기본으로 지원하는 프로토콜 http, https, ftp, file, jar.
+    - ClassPathResource: 지원하는 접두어 classpath:
+    - FileSystemResource
+    - ServletContextResource: 웹 애플리케이션 루트에서 상대 경로로 리소스 찾는다.
+
+- 리소스 읽어오기
+    - Resource의 타입은 locaion 문자열과 ApplicationContext의 타입에 따라 결정 된다.
+    - ClassPathXmlApplicationContext -> ClassPathResource
+    - FileSystemXmlApplicationContext -> FileSystemResource
+    - WebApplicationContext -> ServletContextResource
+
+자신이 사용하는 ApplicationContext에 따라서 달라집니다.
+
+예제 코드
+
+~~~
+@Autowired
+ClassPathXmlApplicationContext loader;
+
+@Override
+public void run(ApplicationArguments args) throws Exception {
+    Resource resource = loader.getResource("test.txt");
+}
+~~~
+
+ClassPathXmlApplicationContext 에서 불러오는 것이라면 classpath 문자열을 생략가능합니다.
+
+- `ApplicationContext의 타입에 상관없이 리소스 타입을 강제`하려면 java.net.URL 접두어(+ classpath:)중 하나를 사용할 수 있다.
+    - classpath:me/whiteship/config.xml -> ClassPathResource
+    - file:///some/resource/path/config.xml -> FileSystemResource
+
+## Class Type 검증
+
+~~~
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    ApplicationContext loader;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Resource resource = loader.getResource("classpath:test.txt");
+
+        // Class Type 검증
+
+        // locader는 ApplicationContext 타입이므로 ApplicationContext.class 출력되야 합니다.
+        System.out.println(loader.getClass());   
+
+        // resource는 classpath를 사용하였으므로 ClassPathResource.class 출력되야 합니다.
+        System.out.println(resource.getClass()); 
+    }
+}
+
+결과 - 
+
+class org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext
+class org.springframework.core.io.ClassPathResource
+~~~
+
+검증이 완료되었습니다.
+
+classpath 라는 프리픽스를 사용했기때문에 ClassPathResource 출력된것입니다.
+
+# Validation(검증) 추상화
+
+[org.springframework.validation](https://docs.spring.io/spring/docs/current/javadoc-api/org/springframework/validation/Validator.html)
+
+~~~
+ public class UserLoginValidator implements Validator {
+
+    private static final int MINIMUM_PASSWORD_LENGTH = 6;
+
+    public boolean supports(Class clazz) {
+       return UserLogin.class.isAssignableFrom(clazz);
+    }
+
+    public void validate(Object target, Errors errors) {
+       ValidationUtils.rejectIfEmptyOrWhitespace(errors, "userName", "field.required");
+       ValidationUtils.rejectIfEmptyOrWhitespace(errors, "password", "field.required");
+       UserLogin login = (UserLogin) target;
+       if (login.getPassword() != null
+             && login.getPassword().trim().length() < MINIMUM_PASSWORD_LENGTH) {
+          errors.rejectValue("password", "field.min.length",
+                new Object[]{Integer.valueOf(MINIMUM_PASSWORD_LENGTH)},
+                "The password must be at least [" + MINIMUM_PASSWORD_LENGTH + "] characters in length.");
+       }
+    }
+ }
+~~~
+
+개발자가 검증해야하는 인스턴스 class가 
+UserLoginValidator.class가 검증할 수 있는 class인지 확인하는 메소드 supports
+validate 메소드에서 검증작업이 실행됩니다.
+
+간단 예제
+
+제목이 비어있을 수 없는 조건으로 검증하겠습니다.
+
+~~~
+public class Event {
+    private Long id;
+    private String title;
+
+    // getter, setter
+}
+
+public class EventValidator implements Validator {
+    @Override
+    public boolean supports(Class<?> clazz) {
+        // 검증하는 타입의 class가 동일한지 확인합니다.
+        return Event.class.equals(clazz);
+    }
+
+    @Override
+    public void validate(Object target, Errors errors) {
+        // errorCode는 ApplicationContext에서 상속받는 MessageSource 기능을 사용해서 key값에 해당하는 에러 코드를 가져옵니다.
+        // defalutmessage 매개변수는 errorCode 메세지에서 key값을 못찾았을때 출력하는 문자열
+        ValidationUtils.rejectIfEmptyOrWhitespace(errors, "title", "not empty", "Empty Masseage!!");
+    }
+}
+
+@Component
+public class EventRunner implements ApplicationRunner {
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Event event = new Event();
+        EventValidator eventValidator = new EventValidator();
+
+        // 어떤 객체를 검사할것인지 어떤 이름인지 작성
+        BeanPropertyBindingResult beanPropertyBindingResult = new BeanPropertyBindingResult(event, "event");
+
+        // 검증 실시
+        eventValidator.validate(event, beanPropertyBindingResult);
+
+        // error 존재여부 확인
+        System.out.println(beanPropertyBindingResult);
+
+        beanPropertyBindingResult.getAllErrors().forEach(e -> {
+            System.out.println("=======");
+            Arrays.stream(e.getCodes()).forEach(System.out::println);
+            System.out.println(e.getDefaultMessage());
+        });
+    }
+}
+
+결과 - 
+
+not empty.event.title
+not empty.title
+not empty.java.lang.String
+not empty
+Empty Masseage!!
+~~~
+
+## 스프링 부트 2.0.5 이상 버전을 사용할 때
+
+- LocalValidatorFactoryBean 빈으로 자동 등록
+- JSR-380(Bean Validation 2.0.1) 구현체로 hibernate-validator 사용.
+- https://beanvalidation.org/
+
+~~~
+public class Event {
+    private Long id;
+
+    @NotEmpty
+    private String title;
+
+    @Min(0)
+    private int limit;
+
+    @Email
+    private String email;
+
+    ...
+}
+
+// 스프링 부트 2.0.5 이상 버전 검증방법
+@Component
+public class EventRunner implements ApplicationRunner {
+
+    @Autowired
+    Validator validator;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        System.out.println(validator);
+
+        Event event = new Event();
+        event.setLimit(-1);
+        event.setEmail("asdasd");
+
+        BeanPropertyBindingResult beanPropertyBindingResult = new BeanPropertyBindingResult(event, "event");
+
+        validator.validate(event, beanPropertyBindingResult);
+
+        System.out.println(beanPropertyBindingResult);
+
+        beanPropertyBindingResult.getAllErrors().forEach(e -> {
+            System.out.println("=======");
+            Arrays.stream(e.getCodes()).forEach(System.out::println);
+            System.out.println(e.getDefaultMessage());
+        });
+    }
+}
+
+결과 - 
+
+=======
+NotEmpty.event.title
+NotEmpty.title
+NotEmpty.java.lang.String
+NotEmpty
+비어 있을 수 없습니다
+=======
+Email.event.email
+Email.email
+Email.java.lang.String
+Email
+올바른 형식의 이메일 주소여야 합니다
+=======
+Min.event.limit
+Min.limit
+Min.int
+Min
+0 이상이어야 합니다
 ~~~
