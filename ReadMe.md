@@ -44,6 +44,14 @@
     - [1. Class Type 검증](#Class-Type-검증)
 - [11. Validation(검증) 추상화](#Validation(검증)-추상화)
     - [1. 스프링 부트 2.0.5 이상 버전을 사용할 때](#스프링-부트-2.0.5-이상-버전을-사용할-때)
+- [12. PropertyEditor](#PropertyEditor)
+- [13. Converter와 Formatter](#Converter와-Formatter)
+    - [1. Converter](#Converter)
+    - [2. Formatter](#Formatter)
+    - [3. ConversionService](#ConversionService)
+    - [4. 스프링 부트](#스프링-부트)
+    - [5. 등록된 Converter 확인하는 방법](#등록된-Converter-확인하는-방법)
+
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -1559,6 +1567,12 @@ Min
 사용자 관점: 사용자 입력값을 애플리케이션 도메인 모델에 동적으로 변환해 넣어주는 기능.
 해석하자면: 할당할때 왜 바인딩이 필요하냐면 `입력값은 대부분 “문자열”`인데, 그 값을 객체가 가지고 있는 int, long, Boolean, Date 등 심지어 Event, Book 같은 도메인 타입으로도 `변환해서 넣어주는 기능.`
 
+- 스프링 3.0 이전까지 DataBinder가 변환 작업 사용하던 인터페이스
+- 쓰레드-세이프 하지 않음 (상태 정보 저장 하고 있음, 따라서 싱글톤 빈으로 등록해서
+쓰다가는...)
+- Object와 String 간의 변환만 할 수 있어, 사용 범위가 제한적 임. (그래도 그런 경우가
+대부분이기 때문에 잘 사용해 왔음. 조심해서..)
+
 간단 예제
 
 ~~~
@@ -1666,3 +1680,147 @@ Stateless는 http와 같이 `이전의 상태를 기록하지 않는 접속`입�
 
 쓰레드 세이프(thread-safe)란 무엇인가?
 thread safe란 것은 `여러 thread가 동시에 사용되어도 안전`하단 말입니다.
+
+# Converter와 Formatter
+
+[Interface Converter<S,T>](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/core/convert/converter/Converter.html)
+
+[Interface ConverterRegistry](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/core/convert/converter/ConverterRegistry.html)
+
+PropertyEditor의 여러가지 단점을 보안해서 Converter 나왔습니다.
+
+## Converter
+
+- Converter
+    - S 타입을 T 타입으로 변환할 수 있는 매우 일반적인 변환기.
+    - 상태 정보 없음 == Stateless == 쓰레드세이프
+    - ConverterRegistry에 등록해서 사용
+
+간단 예제
+
+~~~
+@RestController
+public class EventController {
+    /*
+    * {event} 입력을 1, 2, 3, 4, ... int 형으로 event의 id를 입력합니다.
+    * 입력한 숫자를 Event 타입으로 변환을 해서 Spring에서 받습니다.
+    * 쭌프로피셜 event는 숫자입니다 하지만 매개변수는 Event 타입 입니다.
+    * 숫자를 Event 타입으로 변환해주는게 이번 예제의 핵심
+    * */
+    @GetMapping("/event/{event}")
+    public String getEvent(Event event) {
+        System.out.println(event);
+        return event.getId().toString();
+    }
+}
+
+
+public class EventConverter {
+    /*
+    * 상태정보가 없기 때문에 Bean으로 등록해도 상관없습니다.
+    * */
+
+    public static class StringToEventConverter implements Converter<String, Event> {
+        @Override
+        public Event convert(String source) {
+            return new Event(Long.parseLong(source));
+        }
+    }
+
+    public static class EventToStringConverter implements Converter<Event, String> {
+        @Override
+        public String convert(Event source) {
+            return source.getId().toString();
+        }
+    }
+}
+
+/*
+* StringToEventConverter 등록합니다.
+* 모든 Controller에서 동작을 합니다.
+* */
+@Configuration
+public class WebConfig implements WebMvcConfigurer {    
+    @Override
+    public void addFormatters(FormatterRegistry registry) {
+        registry.addConverter(new EventConverter.StringToEventConverter());
+    }
+}
+~~~
+
+## Formatter
+
+[Interface Formatter<T>](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/format/Formatter.html)
+[Interface FormatterRegistry](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/format/FormatterRegistry.html)
+
+- PropertyEditor 대체제
+    - Object와 String 간의 변환을 담당한다.
+    - 문자열을 Locale에 따라 다국화하는 기능도 제공한다. (optional)
+    - FormatterRegistry에 등록해서 사용
+
+간단 예제
+
+~~~
+/*
+* thread-safe 하므로 Bean 등록이 가능합니다.
+*
+* 등록해서 사용하는 방법은 ConverterRegistry에 등록하여 사용해야 합니다.
+* */
+public class EventFormatter implements Formatter<Event> {
+    @Override
+    public Event parse(String text, Locale locale) throws ParseException {
+        return new Event(Long.parseLong(text));
+    }
+
+    @Override
+    public String print(Event object, Locale locale) {
+        return object.getId().toString();
+    }
+}
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    /*
+    * StringToEventConverter 등록합니다.
+    * ConversionService 등록이 됩니다.
+    * */
+    @Override
+    public void addFormatters(FormatterRegistry registry) {
+        registry.addFormatter(new EventFormatter());
+    }
+}
+~~~
+
+## ConversionService
+
+- 실제 변환 작업은 이 인터페이스를 통해서 쓰레드-세이프하게 사용할 수 있음.
+- 스프링 MVC, 빈 (value) 설정, SpEL에서 사용한다.
+- DefaultFormattingConversionService
+    - FormatterRegistry
+    - ConversionService
+    - 여러 기본 컴버터와 포매터 등록 해 줌.
+
+## 스프링 부트
+
+- 웹 애플리케이션인 경우에 DefaultFormattingConversionSerivce를 상속하여 만든
+WebConversionService를 빈으로 등록해 준다.
+- Formatter와 Converter 빈을 찾아 자동으로 등록해 준다.
+
+## 등록된 Converter 확인하는 방법
+
+~~~
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    ConversionService conversionService;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        System.out.println(conversionService);
+        System.out.println(conversionService.getClass().toString());
+    }
+}
+~~~
+
+여러가지 등록된 Converter 확인할 수 있습니다.
