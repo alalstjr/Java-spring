@@ -202,7 +202,7 @@ bookService Bean위치에 bookRepository `property 를 추가하므로서 생성
 property name="bookRepository" 에서 `name` 은 bookRepository의 `setter에서 참조`한것입니다.
 `ref` 는 다른 Bean을 참조한다는 의미로 사용됩니다.
 
-Bean 생산이 완료되었다면 ApplicationContext를 만들어서 사용하면 됍니다.
+Bean 생산이 완료되었다면 ApplicationContext를 만들어서 사용하면 됩니다.
 
 ~~~
 public class Application {
@@ -256,7 +256,7 @@ public class BookService {
 public class BookRepository { ... }
 ~~~
 
-component-scan으로 Bean으로는 등록이 되지만 의존성 주입은 아직 안됍니다.
+component-scan으로 Bean으로는 등록이 되지만 의존성 주입은 아직 안됩니다.
 Bean으로 등록된 클래스를 의존성 주입을 받으려면 대표적으로 @Autowired 에노테이션을 사용합니다.
 
 ## Bean 설정파일을 Java 코드로 만들기
@@ -1550,3 +1550,119 @@ Min.int
 Min
 0 이상이어야 합니다
 ~~~
+
+# PropertyEditor
+
+[DataBinder](https://docs.spring.io/spring/docs/current/javadoc-api/org/springframework/validation/DataBinder.html)
+
+기술적인 관점: 프로퍼티 값을 타겟 객체에 설정하는 기능
+사용자 관점: 사용자 입력값을 애플리케이션 도메인 모델에 동적으로 변환해 넣어주는 기능.
+해석하자면: 할당할때 왜 바인딩이 필요하냐면 `입력값은 대부분 “문자열”`인데, 그 값을 객체가 가지고 있는 int, long, Boolean, Date 등 심지어 Event, Book 같은 도메인 타입으로도 `변환해서 넣어주는 기능.`
+
+간단 예제
+
+~~~
+public class Event {
+    private Long Id;
+    private String title;
+
+    public Event(Long id) {
+        Id = id;
+    }
+
+    public Long getId() {
+        return Id;
+    }
+
+    public void setId(Long id) {
+        Id = id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+}
+
+/*
+ * Text를 Event 로 변환해야합니다.
+ * */
+public class EventEditor extends PropertyEditorSupport {
+
+    /*
+    * getValue, setValue 는 PropertyEditor 가지고있는 값입니다.
+    * 이 값이 서로다른 Thread 에서 공유가 됩니다.
+    * stateful 상태입니다. 이는 thread safe 하지 않기 때문에 여러 thread 에서 공유해서 사용하면 안됩니다.
+    * 즉 EventEditor.class 를 Bean으로 등록해서 사용하면 안됩니다.
+    * 그럼 어떻게 사용하느냐?
+    * @InitBinder 를 사용하여 사용하는 Controller 위치에 등록하는 방법이 있습니다.
+    * */
+    @Override
+    public String getAsText() {
+        Event event = (Event) getValue();
+        return event.getId().toString();
+    }
+
+    @Override
+    public void setAsText(String text) throws IllegalArgumentException {
+        /*
+        * 값이 전달되는 것은 문자열이지만 개발자는 숫자로 인식할겁니다.
+        * */
+        Event event = new Event(Long.parseLong(text));
+        setValue(event);
+    }
+}
+
+@RestController
+public class EventController {
+
+    /*
+    * @InitBinder 를 사용하여 EventEditor를 Controller 위치에 등록
+    * Controller가 어떤 요청을 처리하기 전에 WebDataBinder 내부에 들어있는 PropertyEditor 정보를 사용하게 됩니다.
+    * 문자열로 들어온 {event} 값을 원하는 값의 형으로 변환 후 Event 객체로 바꾸는 작업을 합니다.
+    * */
+    @InitBinder
+    public void init(WebDataBinder webDataBinder) {
+        webDataBinder.registerCustomEditor(Event.class, new EventEditor());
+    }
+
+    /*
+    * {event} 입력을 1, 2, 3, 4, ... int 형으로 event의 id를 입력합니다.
+    * 입력한 숫자를 Event 타입으로 변환을 해서 Spring에서 받습니다.
+    * */
+    @GetMapping("/event/{event}")
+    public String getEvent(@PathVariable Event event) {
+        System.out.println(event.getId());
+        return event.getId().toString();
+    }
+}
+
+@RunWith(SpringRunner.class)
+@WebMvcTest
+public class EventControllerTest {
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Test
+    public void getEvent() throws Exception {
+        mockMvc
+                .perform(get("/event/1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("1"))
+                .andDo(print());
+    }
+}
+~~~
+
+Stateless는 http와 같이 `이전의 상태를 기록하지 않는 접속`입니다.
+어떤 절차에 따른 작업을 하기 위해서 웹서버에 접속을 하고 작업을 진행하다 접속이 끊어졌을때 작업을 새로이 시작해야 한다고 보시면 됩니다. 하긴 요즈음의 경우 쿠키같은 것으로 조금은 개선이 되어 있기는 하지만요..
+결국 웹서버가 사용자의 작업을 기억하지 않고 있다는 의미입니다.
+
+그에 비해 stateful은 `상태를 기억하고 있는 것`입니다. 아마 이에 대한 적절한 예는 온라인 게임의 경우라고 볼 수 있겠네요. 사용자가 진행한 작업또는 사용자의 요청을 서버가 기록하고 있으며 사용자가 다시 게임에 로그온 했을때는 이전에 기록된 단계에서 부터 다시 시작하는 것입니다.
+
+쓰레드 세이프(thread-safe)란 무엇인가?
+thread safe란 것은 `여러 thread가 동시에 사용되어도 안전`하단 말입니다.
