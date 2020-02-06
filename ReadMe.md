@@ -53,6 +53,12 @@
     - [5. 등록된 Converter 확인하는 방법](#등록된-Converter-확인하는-방법)
 - [14. SpEL (스프링 Expression Language)](#SpEL-(스프링-Expression-Language))
     - [1. 실제로 어디서 쓰나?](#실제로-어디서-쓰나?)
+- [15. 스프링 AOP](#스프링-AOP)
+- [16. 프록시 기반 AOP](#프록시-기반-AOP)
+- [17. @AOP](#AOP)
+     - [1. 특정 class 메소드를 적용시키는 경우](#특정-class-메소드를-적용시키는-경우)
+     - [2. 특정 메소드에만 적용 시키는 경우](#특정-메소드에만-적용-시키는-경우)
+- [18. Null-safety](#Null-safety)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -2153,5 +2159,37 @@ public class SimpleEventService implements EventService {
     public void createEvent() {...}
 
     ...
+}
+~~~
+
+# Null-safety
+
+- 스프링 프레임워크 5에 추가된 Null 관련 애노테이션
+    - @NonNull
+    - @Nullable
+    - @NonNullApi (패키지 레벨 설정)
+    - @NonNullFields (패키지 레벨 설정)
+
+~~~
+@Service
+public class EventService {
+
+    @NonNull
+    public String createEvent(@NonNull String name) {
+        return name;
+    }
+}
+
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    @Autowired
+    EventService eventService;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        String message = eventService.createEvent(null);
+        // error 발생
+    }
 }
 ~~~
