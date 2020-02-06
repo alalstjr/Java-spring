@@ -51,7 +51,8 @@
     - [3. ConversionService](#ConversionService)
     - [4. 스프링 부트](#스프링-부트)
     - [5. 등록된 Converter 확인하는 방법](#등록된-Converter-확인하는-방법)
-
+- [14. SpEL (스프링 Expression Language)](#SpEL-(스프링-Expression-Language))
+    - [1. 실제로 어디서 쓰나?](#실제로-어디서-쓰나?)
 
 # 스프링 IoC 컨테이너와 빈
 
@@ -1824,3 +1825,83 @@ public class AppRunner implements ApplicationRunner {
 ~~~
 
 여러가지 등록된 Converter 확인할 수 있습니다.
+
+# SpEL (스프링 Expression Language)
+
+[Core Technologies](https://docs.spring.io/spring/docs/current/spring-framework-reference/core.html#expressions)
+
+- 스프링 EL이란?
+    - 객체 그래프를 조회하고 조작하는 기능을 제공한다.
+    - Unified EL과 비슷하지만, 메소드 호출을 지원하며, 문자열 템플릿 기능도 제공한다.
+    - OGNL, MVEL, JBOss EL 등 자바에서 사용할 수 있는 여러 EL이 있지만, SpEL은 모든 스프링 프로젝트 전반에 걸쳐 사용할 EL로 만들었다.
+    - 스프링 3.0 부터 지원.
+
+- 문법
+    - #{“표현식"}
+    - ${“프로퍼티"}
+    - 표현식은 프로퍼티를 가질 수 있지만, 반대는 안 됨.
+        - #{${my.data} + 1}
+    - 레퍼런스 참고
+
+간단 예제
+
+~~~
+my.value=100
+
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    // 표현식 사용방법
+    @Value("#{1 + 1}")
+    int number;
+
+    @Value("#{'hello' + 'hi~!'}")
+    String string;
+
+    @Value("#{1 eq 1}")
+    boolean trueOrFalse;
+
+    // property 잠조방법
+    @Value("${my.value}")
+    String myValue;
+
+    // property 잠조와 동시에 표현식을 사용 가능합니다.
+    @Value("#{${my.value} + 10}")
+    String myValue2;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        System.out.println("======");
+        System.out.println(number);
+        System.out.println(string);
+        System.out.println(trueOrFalse);
+        System.out.println(myValue);
+        System.out.println(myValue2);
+        System.out.println("======");
+    }
+}
+
+결과 -
+
+======
+2
+hellohi~!
+true
+100
+110
+======
+~~~
+
+## 실제로 어디서 쓰나?
+
+- @Value 애노테이션
+- @ConditionalOnExpression 애노테이션
+- 스프링 시큐리티
+    - https://docs.spring.io/spring-security/site/docs/3.0.x/reference/el-access.html
+    - 메소드 시큐리티, @PreAuthorize, @PostAuthorize, @PreFilter, @PostFilter
+    - XML 인터셉터 URL 설정
+- 스프링 데이터
+    - https://spring.io/blog/2014/07/15/spel-support-in-spring-data-jpa-query-definitions
+    - @Query 애노테이션
+- Thymeleaf
+
