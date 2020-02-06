@@ -1905,3 +1905,253 @@ true
     - @Query 애노테이션
 - Thymeleaf
 
+# 스프링 AOP
+
+Aspect-oriendted Programming (AOP)은 OOP를 보완하는 수단으로, 흩어진 Aspect를 모듈화 할 수 있는 프로그래밍 기법.
+
+- AOP 주요 개념
+    - Aspect와 Target(Aspect가 가지고있는 적용하는 대상들)
+    - Advice(작업해야하는 일)
+    - Pointcut(어디에 적용되야 하는지 임시 저장하는 곳)
+    - Join point()
+
+- AOP 구현체
+    - https://en.wikipedia.org/wiki/Aspect-oriented_programming
+    - 자바
+        - AspectJ
+        - 스프링 AOP
+
+- AOP 적용 방법
+    - 컴파일
+    - 로드 타임
+    - 런타임
+
+# 프록시 기반 AOP
+
+- 스프링 AOP 특징
+    - 프록시 기반의 AOP 구현체
+    - 스프링 빈에만 AOP를 적용할 수 있다.
+    - 모든 AOP 기능을 제공하는 것이 목적이 아니라, 스프링 IoC와 연동하여 엔터프라이즈 애플리케이션에서 가장 흔한 문제에 대한 해결책을 제공하는 것이 목적.
+
+- 프록시 패턴
+    - 왜? (기존 코드 변경 없이) `접근 제어 또는 부가 기능 추가`
+    - 기존 코드를 건드리지 않고 성능을 측정해 보자. (프록시 패턴으로)
+
+간단 예제
+
+~~~
+/*
+* interface Subject
+* */
+public interface EventService {
+    void createEvent();
+    void publicEvent();
+}
+
+/*
+ * Real Subject
+ * */
+@Service
+public class SimpleEventService implements EventService {
+    @Override
+    public void createEvent() {
+        try {
+            Thread.sleep(1000);
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("createEvent");
+    }
+
+    @Override
+    public void publicEvent() {
+        try {
+            Thread.sleep(2000);
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("publicEvent");
+    }
+}
+
+/*
+ * Client
+ * */
+@Component
+public class AppRunner implements ApplicationRunner {
+
+    /*
+     * Interface 형식으로 주입받는것을 권장합니다.
+     * 일단 인터페이스 타입을 쓰면 클래스 타입을 쓸 때 보다 프록시를 만들 때 제약이 별로 없거든요.
+     * 클래스 같은 경우엔 final class거나 생성자가 private라거나 그런 경우에 프록시를 만들지 못하는 경우도 있어요.
+     * 또한 인터페이스가 있는데 굳이 클래스 타입을 쓰면 프록시 주입이 제대로 안되는 경우가 발생할 수도 있습니다.
+     */
+    @Autowired
+    EventService eventService;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        eventService.createEvent();
+        eventService.publicEvent();
+    }
+}
+~~~
+
+프록시로 SimpleEventService.class, AppRunner.class 를 건들이지 않고 기능을 추가하는 것입니다.
+SimpleEventService.class 메소드들이 실행되는 시간을 측정하는 기능을 추가할겁니다.
+
+만약 직접 코드를 건들여서 추가한다면
+
+~~~
+@Service
+public class SimpleEventService implements EventService {
+    @Override
+    public void createEvent() {
+        long l = System.currentTimeMillis();
+
+        try {
+            Thread.sleep(1000);
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("createEvent");
+         
+        System.out.println(System.currentTimeMillis() - l);
+    }
+}
+~~~
+
+프로시를 활용한다면
+
+~~~
+/*
+ * Sbject와 타입이 동일해야 합니다.
+ * */
+@Primary
+@Service
+public class ProxySimpleEventService implements EventService {
+
+    /*
+     * Proxy 같은경우 Subject Bean을 주입 받아서 사용해야 합니다.
+     * */
+    @Autowired
+    EventService eventService;
+
+    @Override
+    public void createEvent() {
+        /*
+        * 기능을 위임해 줍니다.
+        * 그와 동시에 시간을 측정하는 기능을 추가합니다.
+        * */
+        long l = System.currentTimeMillis();
+
+        try {
+            Thread.sleep(1000);
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        eventService.createEvent();
+
+        System.out.println(System.currentTimeMillis() - l);
+    }
+
+    @Override
+    public void publicEvent() {
+        eventService.publicEvent();
+    }
+}
+~~~
+
+기존 클래스를 건들이지 않고 기능을 추가해서 실행하였습니다.
+하지만 아직도 중복의 코드는 존재합니다.
+그리고 프록시 코드를 만드는 비용이 너무 크다는 단점.
+똑같은 프록시 기능이 다른 class 에도 적용이 된다면?
+
+- 그래서 등장한 것이 스프링 AOP
+- 스프링 IoC 컨테이너가 제공하는 기반 시설과 Dynamic 프록시를 사용하여 여러 복잡한 문제 해결.
+- 동적 프록시: 동적으로 프록시 객체 생성하는 방법
+    - 자바가 제공하는 방법은 인터페이스 기반 프록시 생성.
+    - CGlib은 클래스 기반 프록시도 지원.
+- 스프링 IoC: 기존 빈을 대체하는 동적 프록시 빈을 만들어 등록 시켜준다.
+    - 클라이언트 코드 변경 없음.
+    - AbstractAutoProxyCreator implements BeanPostProcessor
+
+- 어드바이스 정의
+    - @Before
+    - @AfterReturning
+    - @AfterThrowing
+    - @Around
+
+SimpleEventService.class가 Bean으로 등록이 되면 AbstractAutoProxyCreator의 BeanPostProcessor 로 SimpleEventService.class 감싸는 프록시 Bean을 만들어서 SimpleEventService.class 대신에 등록이 됩니다.
+
+# @AOP
+
+## 특정 class 메소드를 적용시키는 경우
+
+~~~
+@Aspect
+@Component
+public class PerfAspect {
+
+    /*
+     * 해야할 일(advice) 생성합니다.
+     * ProceedingJoinPoint advice가 적용하는 대상
+     *
+     * @Around() Pointcut 이름을 줄수도 있고 직접 정의할 수 도 있습니다.
+     * 해당 메소드를 감싸는 형태로 적용됩니다.
+     * proceed 메소드 호출 전체를 감싸고 있으므로 호출 이전과 이후의 동작을 추가하게 할 수 있습니다.
+     * */
+    @Around("execution(* com.example..*.EventService.*(..))")
+    public Object logPerf(ProceedingJoinPoint pjp) throws Throwable {
+        long l = System.currentTimeMillis();
+        Object proceed = pjp.proceed();
+        System.out.println(System.currentTimeMillis() - l);
+        return proceed;
+    }
+}
+~~~
+
+## 특정 메소드에만 적용 시키는 경우
+
+에노테이션을 생성하여 등록합니다.
+
+~~~
+/*
+ * 에노테이션에서 RetentionPolicy 란 에노테이션 정보를 얼마나 유지할 것인가
+ * RetentionPolicy.CLASS 인 경우 class 까지만 유지하겠다는 설정
+ * 즉 컴파일 바이트코드 안에도 에노테이션이 존재한다는 뜻입니다.
+ * 기본값은 CLASS 입니다. 고로 @Retention 생략 가능합니다.
+ * 만약 RetentionPolicy.SOURCE 인경우 컴파일 이후 사라집니다.
+ *
+ * @Target 메소드라는 것을 선언해줍니다.
+ *
+ * @Around("@annotation(PerLogging)") PerLogging 에노테이션이 붙은 메소드에만 실행하는 코드선언
+ * */
+@Retention(RetentionPolicy.CLASS) // 생략 가능
+@Target(ElementType.METHOD)
+@Documented
+public @interface PerLogging { }
+
+@Aspect
+@Component
+public class PerfAspect {
+    @Around("@annotation(PerLogging)")
+    public Object logPerf(ProceedingJoinPoint pjp) throws Throwable {
+        ...
+    }
+}
+
+@Service
+public class SimpleEventService implements EventService {
+    @PerLogging
+    @Override
+    public void createEvent() {...}
+
+    ...
+}
+~~~
